@@ -137,6 +137,16 @@ public:
 
 public:
 
+    /** @name location */
+    /** @{ */
+
+    Location const& location() const { _C4RV(); return m_tree->location(m_id); }
+    void location(Location const& loc) const { _C4RV(); m_tree->location(m_id, loc); }
+
+    /** @} */
+
+public:
+
     /** @name node predicates */
     /** @{ */
 
@@ -368,6 +378,9 @@ public:
 
 public:
 
+    /** hierarchy getters */
+    /** @{ */
+
     /** O(num_children) */
     NodeRef operator[] (csubstr const& k)
     {
@@ -379,18 +392,6 @@ public:
     }
 
     /** O(num_children) */
-    NodeRef operator[] (size_t pos)
-    {
-        RYML_ASSERT( ! is_seed());
-        RYML_ASSERT(valid());
-        size_t ch = m_tree->child(m_id, pos);
-        NodeRef r = ch != NONE ? NodeRef(m_tree, ch) : NodeRef(m_tree, m_id, pos);
-        return r;
-    }
-
-public:
-
-    /** O(num_children) */
     NodeRef const operator[] (csubstr const& k) const
     {
         RYML_ASSERT( ! is_seed());
@@ -398,6 +399,16 @@ public:
         size_t ch = m_tree->find_child(m_id, k);
         RYML_ASSERT(ch != NONE);
         NodeRef const r(m_tree, ch);
+        return r;
+    }
+
+    /** O(num_children) */
+    NodeRef operator[] (size_t pos)
+    {
+        RYML_ASSERT( ! is_seed());
+        RYML_ASSERT(valid());
+        size_t ch = m_tree->child(m_id, pos);
+        NodeRef r = ch != NONE ? NodeRef(m_tree, ch) : NodeRef(m_tree, m_id, pos);
         return r;
     }
 
@@ -412,7 +423,14 @@ public:
         return r;
     }
 
+    /** @} */
+
 public:
+
+    /** node modification */
+    /** @{ */
+
+    void create() { _apply_seed(); }
 
     inline void operator= (NodeType_e t)
     {
@@ -452,6 +470,8 @@ public:
         sv.assign<N>(v);
         _apply(sv);
     }
+
+    /** @} */
 
 public:
 
@@ -569,8 +589,6 @@ public:
             *var = fallback;
         }
     }
-
-    void create() { _apply_seed(); }
 
 private:
 

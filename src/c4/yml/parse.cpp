@@ -69,8 +69,9 @@ static bool _is_doc_sep(csubstr s)
 
 
 //-----------------------------------------------------------------------------
-Parser::Parser(Allocator const& a)
-    : m_file()
+Parser::Parser(ParseOptions opts, Allocator const& a)
+    : m_parse_options(opts)
+    , m_file()
     , m_buf()
     , m_root_id(NONE)
     , m_tree()
@@ -145,6 +146,8 @@ void Parser::parse(csubstr file, substr buf, Tree *t, size_t node_id)
     m_tree = t;
 
     _reset();
+
+    t->locations(m_parse_options.flags & ParseOptions::TRACK_LOCATION);
 
     while( ! _finished_file())
     {
@@ -2710,9 +2713,11 @@ void Parser::_start_doc(bool as_child)
         {
             _c4dbgp("start_doc: rearranging with root as STREAM");
             m_tree->set_root_as_stream();
+            _save_location(parent_id, m_stack.size() < 2 ? m_state->pos : m_stack.top(1).pos);
         }
         m_state->node_id = m_tree->append_child(parent_id);
         m_tree->to_doc(m_state->node_id);
+        _save_location(m_state->node_id);
     }
     else
     {
@@ -2722,6 +2727,7 @@ void Parser::_start_doc(bool as_child)
         {
             m_tree->to_doc(parent_id, DOC);
         }
+        _save_location(parent_id, m_stack.size() < 2 ? m_state->pos : m_stack.top(1).pos);
     }
     _c4dbgpf("start_doc: id=%zd", m_state->node_id);
     add_flags(RUNK|RTOP|NDOC);
@@ -2850,6 +2856,7 @@ void Parser::_start_new_doc(csubstr rem)
     _set_indentation(indref);
 }
 
+
 //-----------------------------------------------------------------------------
 void Parser::_start_map(bool as_child)
 {
@@ -2881,6 +2888,7 @@ void Parser::_start_map(bool as_child)
             _c4dbgpf("start_map: id=%zd", m_state->node_id);
         }
         _write_val_anchor(m_state->node_id);
+        _save_location(m_state->node_id);
     }
     else
     {
@@ -2902,6 +2910,7 @@ void Parser::_start_map(bool as_child)
         if(m_key_anchor.not_empty())
             m_key_anchor_was_before = true;
         _write_val_anchor(parent_id);
+        _save_location(parent_id);
         if(parent_id != NONE)
         {
             if(m_stack.size() >= 2)
@@ -3009,6 +3018,7 @@ void Parser::_start_seq(bool as_child)
             _c4dbgpf("start_seq: id=%zd%s", m_state->node_id, as_doc ? " as doc" : "");
         }
         _write_val_anchor(m_state->node_id);
+        _save_location(m_state->node_id);
     }
     else
     {
@@ -3028,6 +3038,7 @@ void Parser::_start_seq(bool as_child)
         _move_scalar_from_top();
         _c4dbgpf("start_seq: id=%zd%s", m_state->node_id, as_doc ? " as_doc" : "");
         _write_val_anchor(parent_id);
+        _save_location(parent_id);
     }
     if( ! m_val_tag.empty())
     {
@@ -3101,6 +3112,7 @@ NodeData* Parser::_append_val(csubstr val, bool quoted)
         m_val_tag.clear();
     }
     _write_val_anchor(nid);
+    _save_location(nid);
     return m_tree->get(nid);
 }
 
@@ -3132,8 +3144,10 @@ NodeData* Parser::_append_key_val(csubstr val, bool val_quoted)
     }
     _write_key_anchor(nid);
     _write_val_anchor(nid);
+    _save_location(nid);
     return m_tree->get(nid);
 }
+
 
 //-----------------------------------------------------------------------------
 void Parser::_store_scalar(csubstr const& s, bool is_quoted)

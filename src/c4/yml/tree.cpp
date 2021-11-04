@@ -238,11 +238,13 @@ Tree::Tree(Allocator const& cb)
     m_free_tail(NONE),
     m_arena(),
     m_arena_pos(0),
-    m_alloc(cb)
+    m_alloc(cb),
+    m_location(nullptr)
 {
 }
 
-Tree::Tree(size_t node_capacity, size_t arena_capacity, Allocator const& cb) : Tree(cb)
+Tree::Tree(size_t node_capacity, size_t arena_capacity, Allocator const& cb)
+    : Tree(cb)
 {
     reserve(node_capacity);
     reserve_arena(arena_capacity);
@@ -290,6 +292,11 @@ void Tree::_free()
         RYML_ASSERT(m_arena.len > 0);
         m_alloc.free(m_arena.str, m_arena.len);
     }
+    if(m_location)
+    {
+        RYML_ASSERT(m_cap > 0);
+        m_alloc.free(m_location, m_cap * sizeof(Location));
+    }
     _clear();
 }
 
@@ -308,6 +315,7 @@ void Tree::_clear()
     m_free_tail = 0;
     m_arena = {};
     m_arena_pos = 0;
+    m_location = nullptr;
 }
 
 void Tree::_copy(Tree const& that)
@@ -315,6 +323,7 @@ void Tree::_copy(Tree const& that)
     RYML_ASSERT(m_buf == nullptr);
     RYML_ASSERT(m_arena.str == nullptr);
     RYML_ASSERT(m_arena.len == 0);
+    RYML_ASSERT(m_location == nullptr);
     m_buf = (NodeData*) m_alloc.allocate(that.m_cap * sizeof(NodeData), that.m_buf);
     memcpy(m_buf, that.m_buf, that.m_cap * sizeof(NodeData));
     m_cap = that.m_cap;
@@ -332,6 +341,12 @@ void Tree::_copy(Tree const& that)
         _relocate(arena); // does a memcpy of the arena and updates nodes using the old arena
         m_arena = arena;
     }
+    if(that.m_location)
+    {
+        RYML_ASSERT(that.m_cap > 0);
+        m_location = (Location*) m_alloc.allocate(that.m_cap * sizeof(Location), that.m_location);
+        memcpy(m_buf, that.m_buf, that.m_cap * sizeof(Location));
+    }
 }
 
 void Tree::_move(Tree & that)
@@ -339,6 +354,7 @@ void Tree::_move(Tree & that)
     RYML_ASSERT(m_buf == nullptr);
     RYML_ASSERT(m_arena.str == nullptr);
     RYML_ASSERT(m_arena.len == 0);
+    RYML_ASSERT(m_location == nullptr);
     m_buf = that.m_buf;
     m_cap = that.m_cap;
     m_size = that.m_size;
@@ -346,6 +362,7 @@ void Tree::_move(Tree & that)
     m_free_tail = that.m_free_tail;
     m_arena = that.m_arena;
     m_arena_pos = that.m_arena_pos;
+    m_location = that.m_location;
     that._clear();
 }
 
@@ -358,14 +375,14 @@ void Tree::_relocate(substr next_arena)
     {
         if(in_arena(n->m_key.scalar))
             n->m_key.scalar = _relocated(n->m_key.scalar, next_arena);
-        if(in_arena(n->m_key.tag   ))
-            n->m_key.tag    = _relocated(n->m_key.tag   , next_arena);
+        if(in_arena(n->m_key.tag))
+            n->m_key.tag = _relocated(n->m_key.tag, next_arena);
         if(in_arena(n->m_key.anchor))
             n->m_key.anchor = _relocated(n->m_key.anchor, next_arena);
         if(in_arena(n->m_val.scalar))
             n->m_val.scalar = _relocated(n->m_val.scalar, next_arena);
-        if(in_arena(n->m_val.tag   ))
-            n->m_val.tag    = _relocated(n->m_val.tag   , next_arena);
+        if(in_arena(n->m_val.tag))
+            n->m_val.tag = _relocated(n->m_val.tag, next_arena);
         if(in_arena(n->m_val.anchor))
             n->m_val.anchor = _relocated(n->m_val.anchor, next_arena);
     }
@@ -383,9 +400,16 @@ void Tree::reserve(size_t cap)
             memcpy(buf, m_buf, m_cap * sizeof(NodeData));
             m_alloc.free(m_buf, m_cap * sizeof(NodeData));
         }
+        Location *loc = (Location*) m_alloc.allocate(cap * sizeof(Location), m_location);
+        if(m_location)
+        {
+            memcpy(loc, m_location, m_cap * sizeof(Location));
+            m_alloc.free(m_location, m_cap * sizeof(Location));
+        }
         size_t first = m_cap, del = cap - m_cap;
         m_cap = cap;
         m_buf = buf;
+        m_location = loc;
         _clear_range(first, del);
 
         if(m_free_head != NONE)
@@ -441,9 +465,10 @@ void Tree::_claim_root()
 //-----------------------------------------------------------------------------
 void Tree::_clear_range(size_t first, size_t num)
 {
-    if(num == 0) return; // prevent overflow when subtracting
+    if(num == 0)
+        return; // prevent overflow when subtracting
     RYML_ASSERT(first >= 0 && first + num <= m_cap);
-    memset(m_buf + first, 0, num * sizeof(NodeData));
+    memset(m_buf + first, 0, num * sizeof(NodeData)); // TODO we should not need this
     for(size_t i = first, e = first + num; i < e; ++i)
     {
         _clear(i);
@@ -696,13 +721,15 @@ void Tree::_swap_hierarchy(size_t ia, size_t ib)
 
     for(size_t i = first_child(ia); i != NONE; i = next_sibling(i))
     {
-        if(i == ib || i == ia) continue;
+        if(i == ib || i == ia)
+            continue;
         _p(i)->m_parent = ib;
     }
 
     for(size_t i = first_child(ib); i != NONE; i = next_sibling(i))
     {
-        if(i == ib || i == ia) continue;
+        if(i == ib || i == ia)
+            continue;
         _p(i)->m_parent = ia;
     }
 
@@ -722,10 +749,24 @@ void Tree::_swap_hierarchy(size_t ia, size_t ib)
         else
         {
             bool changed = false;
-            if(pa.m_first_child == ia) { pa.m_first_child = ib; changed = true; }
-            if(pa.m_last_child  == ia) { pa.m_last_child  = ib; changed = true; }
-            if(pb.m_first_child == ib && !changed) { pb.m_first_child = ia; }
-            if(pb.m_last_child  == ib && !changed) { pb.m_last_child  = ia; }
+            if(pa.m_first_child == ia)
+            {
+                pa.m_first_child = ib;
+                changed = true;
+            }
+            if(pa.m_last_child  == ia)
+            {
+                pa.m_last_child = ib;
+                changed = true;
+            }
+            if(pb.m_first_child == ib && !changed)
+            {
+                pb.m_first_child = ia;
+            }
+            if(pb.m_last_child  == ib && !changed)
+            {
+                pb.m_last_child  = ia;
+            }
         }
     }
     else
@@ -874,6 +915,10 @@ void Tree::_swap_props(size_t n_, size_t m_)
     std::swap(n.m_type, m.m_type);
     std::swap(n.m_key, m.m_key);
     std::swap(n.m_val, m.m_val);
+    if(m_location)
+    {
+        std::swap(m_location[n_], m_location[m_]);
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -1865,6 +1910,24 @@ Tree::_lookup_path_token Tree::_next_token(lookup_result *r, _lookup_path_token 
     RYML_ASSERT(unres[pos] == '[');
     _advance(r, pos);
     return {unres.first(pos), SEQ};
+}
+
+
+void Tree::locations(bool enable)
+{
+    if(enable)
+    {
+        if(m_location)
+            return;
+        m_location = (Location*) m_alloc.allocate(m_cap * sizeof(Location), nullptr);
+    }
+    else
+    {
+        if(!m_location)
+            return;
+        m_alloc.free(m_location, m_cap * sizeof(Location));
+        m_location = nullptr;
+    }
 }
 
 } // namespace ryml

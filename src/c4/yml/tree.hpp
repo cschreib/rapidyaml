@@ -1079,6 +1079,27 @@ private:
 
     _lookup_path_token _next_token(lookup_result *r, _lookup_path_token const& parent) const;
 
+public:
+
+    /** @name location */
+    /** @{ */
+
+    /** enable/disable locations from the original source.
+     * allocate to current capacity / deallocate. */
+    void locations(bool enable);
+    /** are locations currently enabled? */
+    bool locations() const { return m_location != nullptr; }
+
+    /** get the location of a node.
+     * requires prior call to enable locations.
+     * @see locations() */
+    Location const& location(size_t node) const { RYML_ASSERT(m_location != nullptr); return m_location[node]; }
+    /** set the location of a node.
+     * requires prior call to locations(true) */
+    void location(size_t node, Location const& loc) { RYML_ASSERT(m_location != nullptr); m_location[node] = loc; }
+
+    /** @} */
+
 private:
 
     void _clear();
@@ -1271,6 +1292,10 @@ public:
         n->m_parent = NONE;
         n->m_first_child = NONE;
         n->m_last_child = NONE;
+        if(m_location)
+        {
+            m_location[node] = {};
+        }
     }
 
     inline void _clear_key(size_t node)
@@ -1314,6 +1339,8 @@ public:
     size_t m_arena_pos;
 
     Allocator m_alloc;
+
+    Location * m_location;
 
 };
 
