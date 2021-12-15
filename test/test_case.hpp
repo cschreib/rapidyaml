@@ -3,9 +3,13 @@
 
 #include <vector>
 
+#ifdef RYML_SINGLE_HEADER
+#include <ryml_all.hpp>
+#else
+#include <c4/yml/yml.hpp>
+#endif
 #include "./libyaml.hpp"
 
-#include <c4/yml/yml.hpp>
 #include <gtest/gtest.h>
 #include <functional>
 

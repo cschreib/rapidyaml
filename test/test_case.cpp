@@ -1,7 +1,10 @@
 #include "./test_case.hpp"
+#ifndef RYML_SINGLE_HEADER
 #include "c4/format.hpp"
 #include "c4/span.hpp"
 #include "c4/yml/std/std.hpp"
+#endif
+// these headers are not amalgamated
 #include "c4/yml/detail/print.hpp"
 #include "c4/yml/detail/checks.hpp"
 

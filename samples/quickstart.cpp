@@ -23,19 +23,23 @@
 
 //-----------------------------------------------------------------------------
 
+#ifndef RYML_SINGLE_HEADER
 // <ryml_std.hpp> is only needed if interop with std types is desired.
 // ryml itself does not use any STL container.
 #include <ryml_std.hpp> // optional header. BUT when used, needs to be included BEFORE ryml.hpp
 #include <ryml.hpp>
+#include <c4/yml/preprocess.hpp> // needed only for the json sample
+#include <c4/format.hpp> // needed only needed for the examples below
+#else
+#include <ryml_all.hpp>
+#endif
 
-// tbese are only needed for the examples below
-#include <c4/format.hpp>
+// these are only needed for the examples below
 #include <iostream>
 #include <sstream>
 #include <vector>
 #include <array>
 #include <map>
-#include <c4/yml/preprocess.hpp> // needed only for the json sample
 
 
 //-----------------------------------------------------------------------------
@@ -662,8 +666,8 @@ void sample_substr()
         foobar.tolower();           CHECK(foobar == "faaaar");
         foobar.fill('.');           CHECK(foobar == "......");
         // see also:
-        // - erase()
-        // - replace_all()
+        // - .erase()
+        // - .replace_all()
     }
 
     // sub-views
